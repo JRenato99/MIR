@@ -11,7 +11,7 @@ type RouteNode = {
   y?: number;
   fixed?: { x: boolean; y: boolean };
   group: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 
 type RouteEdge = {
@@ -20,7 +20,7 @@ type RouteEdge = {
   to: string;
   title?: string;
   group: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 
 type RouteGraph = {
@@ -41,6 +41,24 @@ type routeDetailGraphProps = {
   onSelect?: (payload: SelectionPayload | null) => void;
 };
 
+type NetworkNodeUpdate = {
+  id: string;
+  fixed: { x: boolean; y: boolean };
+};
+
+type NetworkNodeUpdater = {
+  update: (items: NetworkNodeUpdate[]) => void;
+};
+
+type NetworkWithData = Network & {
+  body: {
+    data: {
+      nodes: NetworkNodeUpdater & { get: (id: string) => RouteNode };
+      edges: { get: (id: string) => RouteEdge };
+    };
+  };
+};
+
 const nf = new Intl.NumberFormat();
 
 export default function RouteDetailGraph({ route, onSelect }: routeDetailGraphProps) {
@@ -59,28 +77,33 @@ export default function RouteDetailGraph({ route, onSelect }: routeDetailGraphPr
 
   useEffect(() => {
     if (!route?.id) return;
-    setLoading(true);
-    setErrMsg("");
-    setSelectedEdgeId(null);
-    setSelectedNodeId(null);
+    const loadRoute = async () => {
+      setLoading(true);
+      setErrMsg("");
+      setSelectedEdgeId(null);
+      setSelectedNodeId(null);
 
-    Promise.all([
-      api.get(`/topology/routes/${route.id}/graph-with-access`),
-      api.get(`/topology/routes/${route.id}/inventory`),
-    ])
-      .then(([g, inv]) => {
+    try {
+        const [g, inv] = await Promise.all([
+          api.get(`/topology/routes/${route.id}/graph-with-access`),
+          api.get(`/topology/routes/${route.id}/inventory`),
+        ]);
         setGraph(g.data || { nodes: [], edges: [] });
         setInventory(inv.data || null);
-      })
-      .catch((e) => {
+      } catch (e) {
         console.error("RouteDetailGraph load error:", e);
-        setErrMsg(
-          e?.response?.data?.detail ||
-            e?.message ||
-            "No se pudo cargar la ruta."
-        );
-      })
-      .finally(() => setLoading(false));
+         const message =
+          (e as { response?: { data?: { detail?: string } }; message?: string })
+            ?.response?.data?.detail ||
+          (e as { message?: string })?.message ||
+          "No se pudo cargar la ruta.";
+        setErrMsg(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRoute();
   }, [route?.id]);
 
   const options = useMemo(
@@ -191,8 +214,9 @@ export default function RouteDetailGraph({ route, onSelect }: routeDetailGraphPr
     if (!net) return;
 
     const handlerClick = (params: { nodes?: string[]; edges?: string[] }) => {
-      const dsNodes = (net as any).body.data.nodes;
-      const dsEdges = (net as any).body.data.edges;
+      const network = net as NetworkWithData;
+      const dsNodes = network.body.data.nodes;
+      const dsEdges = network.body.data.edges;
 
       const nodeId = params?.nodes?.[0] || null;
       const edgeId = params?.edges?.[0] || null;
@@ -254,7 +278,8 @@ export default function RouteDetailGraph({ route, onSelect }: routeDetailGraphPr
       const ids = params?.nodes ?? [];
       if (!ids.length) return;
       try {
-        (net as any).body.data.nodes.update(
+        const network = net as NetworkWithData;
+        network.body.data.nodes.update(
           ids.map((id) => ({ id, fixed: { x: false, y: false } }))
         );
       } catch (e) {
@@ -273,7 +298,8 @@ export default function RouteDetailGraph({ route, onSelect }: routeDetailGraphPr
           y: p.y,
         }));
         await api.post("/graph/positions", items);
-        (net as any).body.data.nodes.update(
+        const network = net as NetworkWithData;
+        network.body.data.nodes.update(
           ids.map((id) => ({ id, fixed: { x: true, y: true } }))
         );
       } catch (e) {

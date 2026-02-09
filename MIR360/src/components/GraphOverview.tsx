@@ -33,6 +33,19 @@ type GraphOverviewData = {
   meta?: Record<string, unknown>;
 }
 
+type NetworkNodeUpdate = {
+  id: string;
+  fixed: {x:boolean; y: boolean};
+}
+
+type NetworkNodeUpdater = {
+  update: (items: NetworkNodeUpdate[]) => void;
+};
+
+type NetworkWithNodeData = Network & {
+  body: { data: { nodes: NetworkNodeUpdater } };
+};
+
 type GraphOverviewProps = {
   onSelect: (selection: SelectionPayload | null) => void;
   onOpenRoute: (routeId: string) => void;
@@ -78,12 +91,19 @@ export default function GraphOverview({ onSelect, onOpenRoute }: GraphOverviewPr
 
   // Cargar grafo overview (solo una vez)
   useEffect(() => {
-    setLoading(true);
-    api
-      .get("/graph/overview")
-      .then((r) => setGraph(r.data))
-      .catch((e) => console.error("GET /graph/overview error:", e))
-      .finally(() => setLoading(false));
+    const loadOverview = async () => {
+      setLoading(true);
+      try {
+        const response = await api.get("/graph/overview");
+        setGraph(response.data);
+      } catch (e) {
+        console.error("GET /graph/overview error:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOverview();
   }, []);
 
   // Adaptar data del backend al formato de vis-network
@@ -289,7 +309,8 @@ export default function GraphOverview({ onSelect, onOpenRoute }: GraphOverviewPr
       if (locked) return;
       const ids = params?.nodes ?? [];
       if (!ids.length) return;
-      (net as any).body.data.nodes.update(
+      const network = net as NetworkWithNodeData;
+      network.body.data.nodes.update(
         ids.map((id) => ({ id, fixed: { x: false, y: false } }))
       );
     };
@@ -305,7 +326,8 @@ export default function GraphOverview({ onSelect, onOpenRoute }: GraphOverviewPr
           y: p.y,
         }));
         await api.post("/graph/positions", items);
-        (net as any).body.data.nodes.update(
+        const network = net as NetworkWithNodeData;
+        network.body.data.nodes.update(
           ids.map((id) => ({ id, fixed: { x: true, y: true } }))
         );
       } catch (e) {

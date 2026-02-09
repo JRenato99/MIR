@@ -91,7 +91,7 @@ type PoleDetails = {
 type DetailsData =
   | { kind: "POLE"; details: PoleDetails; }
   | { kind: "MUFA"; details: MufaDetails; }  
-  | { kind: String | null; raw: unknown; };
+  | { kind: string | null; raw: unknown; };
 
 type DetailsState = {
   loading: boolean;
@@ -475,9 +475,13 @@ export default function DetailsPanel({ selected } : DetailsPanelProps) {
   const selEdge = selected?.edge || null;
 
   useEffect(() => {
+
+    const resetState = () => {
+      setState({ loading: false, error: "", data: null });
+    };
     // Si no hay nada seleccionado: no hago fetch
     if (!selNode && !selEdge) {
-      setState({ loading: false, error: "", data: null });
+      resetState();
       return;
     }
 
